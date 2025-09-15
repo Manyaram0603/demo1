@@ -1,3 +1,4 @@
+// backend.js
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
@@ -35,6 +36,10 @@ app.post("/signup", async (req, res) => {
     res.json({ success: true, message: "User registered" });
   } catch (err) {
     console.error(err);
+    // Unique email constraint error may come from SQLite - return friendly message
+    if (err.message && err.message.includes("UNIQUE")) {
+      return res.status(400).json({ success: false, error: "Email already registered" });
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -54,6 +59,26 @@ app.post("/login", async (req, res) => {
     res.json({ success: true, token, user: { id: user.id, name: user.name, email: user.email } });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ----------------- Reset Password (no email link) -----------------
+app.post("/reset-password", async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    if (!email || !newPassword) return res.status(400).json({ success: false, error: "Missing fields" });
+
+    const user = await db.get("SELECT * FROM users WHERE email = ?", [email]);
+    if (!user) return res.status(400).json({ success: false, error: "No user found with that email" });
+
+    // Hash new password and update
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await db.run("UPDATE users SET password = ? WHERE id = ?", [hashed, user.id]);
+
+    res.json({ success: true, message: "Password updated" });
+  } catch (err) {
+    console.error("Reset password error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
